@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kitchen Color Visualizer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>Kitchen Color Visualizer</h1>
+    <p>Click on cabinet doors to reveal color palettes and change paint finish</p>
+  </header>
+
+  <div class="container">
+    <!-- Main Interactive Display -->
+    <div class="visualizer-card">
+      <svg id="kitchenCanvas" class="svg-container" viewBox="0 0 800 500">
+        <!-- SVG content will be injected dynamically by JavaScript -->
+      </svg>
+
+      <!-- Floating Color Palette -->
+      <div id="palettePopover" class="palette-popover">
+        <div class="palette-title">Select Cabinet Color</div>
+        <div id="swatchContainer" class="swatch-grid"></div>
+      </div>
+    </div>
+
+    <!-- Kitchen Selection Thumbnails -->
+    <div id="thumbNav" class="thumbnails-nav"></div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
