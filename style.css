@@ -35,7 +35,7 @@ header p {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  max-width: 900px;
+  max-width: 1500px;
   width: 100%;
 }
 
@@ -51,8 +51,45 @@ header p {
 
 .svg-container {
   width: 100%;
-  height: 480px;
+  height: max(520px, calc(100vh - 230px));
   display: block;
+  touch-action: none;
+}
+
+.view-controls {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+}
+
+.view-controls button {
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
+  line-height: 1;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.view-controls button:hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.visualizer-card:fullscreen {
+  border-radius: 0;
+  border: none;
+}
+
+.visualizer-card:fullscreen .svg-container {
+  height: 100vh;
 }
 
 /* Dynamic SVG Elements */
@@ -63,6 +100,98 @@ header p {
 
 .cabinet-door:hover {
   filter: brightness(1.15);
+}
+
+.photo-door {
+  mix-blend-mode: multiply;
+  stroke: transparent;
+  stroke-width: 3px;
+}
+
+.edit-handle {
+  fill: #facc15;
+  stroke: #0f172a;
+  stroke-width: 1;
+  cursor: move;
+}
+
+.edit-coords {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 8px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #e2e8f0;
+  font: 12px monospace;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.pick-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.pick-btn {
+  padding: 6px 12px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pick-btn.active {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.pick-sample {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #475569;
+  background: transparent;
+}
+
+.pick-hint {
+  color: #94a3b8;
+}
+
+.svg-container.picking {
+  cursor: crosshair;
+}
+
+.svg-container.picking .cabinet-door {
+  cursor: crosshair;
+}
+
+.edit-panel {
+  margin-top: 16px;
+}
+
+.edit-help {
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.edit-panel pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  overflow-x: auto;
+}
+
+.photo-door:hover {
+  stroke: #38bdf8;
+  filter: none;
 }
 
 .cabinet-door.selected {
@@ -77,6 +206,23 @@ header p {
 }
 
 /* Floating Palette Popover */
+.reset-color-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px;
+  background: transparent;
+  color: #cbd5e1;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.reset-color-btn:hover {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
 .palette-popover {
   position: absolute;
   top: 20px;
