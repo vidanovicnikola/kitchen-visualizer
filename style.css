@@ -275,6 +275,46 @@ header p {
   transform: scale(1.1);
 }
 
+/* Phones: compact palette docked at the bottom edge of the picture */
+@media (max-width: 600px) {
+  .palette-popover {
+    top: auto;
+    bottom: 8px;
+    left: 8px;
+    right: 8px;
+    width: auto;
+    padding: 8px;
+  }
+
+  .palette-title {
+    font-size: 0.65rem;
+    margin-bottom: 6px;
+  }
+
+  .swatch-grid {
+    grid-template-columns: repeat(8, 1fr);
+    gap: 4px;
+    justify-items: center;
+  }
+
+  .swatch-btn {
+    width: 26px;
+    height: 26px;
+  }
+
+  .reset-color-btn {
+    margin-top: 6px;
+    padding: 4px;
+    font-size: 11px;
+  }
+
+  .view-controls button {
+    width: 30px;
+    height: 30px;
+    font-size: 15px;
+  }
+}
+
 /* Kitchen Selector Thumbnails */
 .thumbnails-nav {
   display: flex;
