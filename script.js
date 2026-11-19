@@ -217,6 +217,51 @@ function setupViewControls() {
     applyView();
   });
   window.addEventListener('pointerup', () => { pan = null; });
+
+  // Two-finger pinch to zoom (and drag with two fingers to pan), anywhere on the picture
+  const touches = new Map();
+  let pinch = null;
+  let pinched = false;
+  let suppressClickUntil = 0;
+  const pinchState = () => {
+    const [a, b] = [...touches.values()];
+    return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  };
+  svgCanvas.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch') return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size === 2) {
+      pan = null;
+      pinch = pinchState();
+      pinched = true;
+    }
+  });
+  svgCanvas.addEventListener('pointermove', e => {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (touches.size !== 2 || !pinch) return;
+    const now = pinchState();
+    zoomAt(now.dist / pinch.dist, now.x, now.y);
+    const scale = svgCanvas.getScreenCTM().a;
+    view.x -= (now.x - pinch.x) / scale;
+    view.y -= (now.y - pinch.y) / scale;
+    applyView();
+    pinch = now;
+  });
+  const endTouch = e => {
+    if (!touches.delete(e.pointerId)) return;
+    if (pinched) suppressClickUntil = Date.now() + 400; // lifting a finger after a pinch must not tap an area
+    if (touches.size < 2) pinch = null;
+    if (!touches.size) pinched = false;
+  };
+  svgCanvas.addEventListener('pointerup', endTouch);
+  svgCanvas.addEventListener('pointercancel', endTouch);
+  svgCanvas.addEventListener('click', e => {
+    if (Date.now() < suppressClickUntil) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
 }
 
 // 3. Render Kitchen SVG Scene
@@ -224,7 +269,8 @@ function loadKitchen(index) {
   activeKitchenIndex = index;
   selectedCabinetId = null;
   selectedIds.clear();
-  updateMultiUI();
+  selectionColor = null;
+  //updateMultiUI();
   palettePopover.classList.remove('active');
   Object.assign(view, { x: 0, y: 0 });
   viewBase.w = 0;
@@ -317,159 +363,6 @@ function renderPhotoKitchen(kitchen) {
   // setupColorPicker(kitchen); // pipette disabled, see commented block below
   if (EDIT_MODE) setupPointEditor(kitchen);
 }
-
-/* DISABLED: color pipette (pick a color on the photo, replace it with a palette color).
-   Not used because similar colors (e.g. wall vs. doors) get replaced together.
-   To re-enable: remove this comment block, and restore the commented lines in
-   loadKitchen, renderPhotoKitchen (setupColorPicker, photoDataUrl), selectDoor and changeColor.
-   Needs the page served over http (reading pixels is blocked on file://). Styles: .pick-* in style.css.
-
-// Color pipette: pick a color on the photo, then replace it (shading preserved) with a palette color
-let photoDataUrl = null;   // current recolored photo (null = original file)
-let workCanvas = null;     // working pixels of the recolored photo
-let pickMode = false;
-let pickedLab = null;
-let pickTolerance = 12;
-let pickClickHandler = null;
-
-function rgbToLab([r, g, b]) {
-  const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-  const R = lin(r), G = lin(g), B = lin(b);
-  const f = t => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
-  const x = f((0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047);
-  const y = f(0.2126 * R + 0.7152 * G + 0.0722 * B);
-  const z = f((0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883);
-  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
-}
-
-function labToRgb([L, a, b]) {
-  const fy = (L + 16) / 116, fx = fy + a / 500, fz = fy - b / 200;
-  const inv = t => t * t * t > 0.008856 ? t * t * t : (t - 16 / 116) / 7.787;
-  const x = inv(fx) * 0.95047, y = inv(fy), z = inv(fz) * 1.08883;
-  const lin = [3.2406 * x - 1.5372 * y - 0.4986 * z, -0.9689 * x + 1.8758 * y + 0.0415 * z, 0.0557 * x - 0.2040 * y + 1.0570 * z];
-  return lin.map(c => {
-    c = Math.min(1, Math.max(0, c));
-    return Math.round(255 * (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055));
-  });
-}
-
-function hexToRgb(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-function loadWorkCanvas(kitchen) {
-  return new Promise(resolve => {
-    if (workCanvas) return resolve(workCanvas);
-    const img = new Image();
-    img.onload = () => {
-      workCanvas = document.createElement('canvas');
-      workCanvas.width = kitchen.width;
-      workCanvas.height = kitchen.height;
-      workCanvas.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, kitchen.width, kitchen.height);
-      resolve(workCanvas);
-    };
-    img.src = kitchen.image;
-  });
-}
-
-async function pickPhotoColor(kitchen, evt) {
-  const pt = svgCanvas.createSVGPoint();
-  pt.x = evt.clientX;
-  pt.y = evt.clientY;
-  const p = pt.matrixTransform(svgCanvas.getScreenCTM().inverse());
-  const canvas = await loadWorkCanvas(kitchen);
-  try {
-    // Average a small area to ignore texture noise
-    const d = canvas.getContext('2d').getImageData(Math.round(p.x) - 2, Math.round(p.y) - 2, 5, 5).data;
-    let r = 0, g = 0, b = 0;
-    for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-    const n = d.length / 4;
-    const rgb = [r / n, g / n, b / n].map(Math.round);
-    pickedLab = rgbToLab(rgb);
-    selectedCabinetId = null;
-    document.querySelectorAll('.cabinet-door').forEach(el => el.classList.remove('selected'));
-    document.getElementById('pickSample').style.backgroundColor = `rgb(${rgb.join(',')})`;
-    document.getElementById('pickHint').textContent = 'Now choose a replacement color from the palette';
-    renderPaletteSwatches();
-    palettePopover.classList.add('active');
-  } catch (err) {
-    document.getElementById('pickHint').textContent =
-      'Browser blocked reading pixels from a local file. Serve the folder over http (e.g. "python -m http.server") and open it via localhost.';
-  }
-}
-
-function replacePickedColor(hexColor) {
-  const ctx = workCanvas.getContext('2d');
-  const frame = ctx.getImageData(0, 0, workCanvas.width, workCanvas.height);
-  const px = frame.data;
-  const target = pickedLab;
-  const newLab = rgbToLab(hexToRgb(hexColor));
-  const ratio = newLab[0] / Math.max(target[0], 1);
-  for (let i = 0; i < px.length; i += 4) {
-    const lab = rgbToLab([px[i], px[i + 1], px[i + 2]]);
-    const dist = Math.hypot(lab[1] - target[1], lab[2] - target[2], 0.5 * (lab[0] - target[0]));
-    let w = 1 - dist / pickTolerance;
-    if (w <= 0) continue;
-    w = w * w * (3 - 2 * w);
-    const out = labToRgb([
-      Math.min(100, lab[0] * ratio),
-      lab[1] + (newLab[1] - target[1]),
-      lab[2] + (newLab[2] - target[2])
-    ]);
-    for (let c = 0; c < 3; c++) px[i + c] = Math.round(px[i + c] * (1 - w) + out[c] * w);
-  }
-  ctx.putImageData(frame, 0, 0);
-  photoDataUrl = workCanvas.toDataURL('image/png');
-  document.getElementById('photoImage').setAttribute('href', photoDataUrl);
-  // The recolored area is now the new color, so continue from it if the user picks again
-  pickedLab = null;
-  document.getElementById('pickHint').textContent = 'Done. Pick another color or click a door';
-  renderPaletteSwatches(hexColor);
-}
-
-function setupColorPicker(kitchen) {
-  document.querySelectorAll('.pick-controls').forEach(el => el.remove());
-  const bar = document.createElement('div');
-  bar.className = 'pick-controls';
-  bar.innerHTML = `
-    <button id="pickToggle" class="pick-btn">Pick color from photo</button>
-    <span id="pickSample" class="pick-sample"></span>
-    <label>Tolerance <input id="pickTol" type="range" min="3" max="40" value="${pickTolerance}"></label>
-    <button id="pickReset" class="pick-btn">Reset photo</button>
-    <span id="pickHint" class="pick-hint"></span>`;
-  document.querySelector('.container').insertBefore(bar, thumbNav);
-
-  const toggle = bar.querySelector('#pickToggle');
-  const syncMode = () => {
-    toggle.classList.toggle('active', pickMode);
-    svgCanvas.classList.toggle('picking', pickMode);
-  };
-  syncMode();
-  toggle.onclick = () => {
-    pickMode = !pickMode;
-    pickedLab = null;
-    syncMode();
-    bar.querySelector('#pickHint').textContent = pickMode ? 'Click a color on the photo' : '';
-  };
-  bar.querySelector('#pickTol').oninput = e => { pickTolerance = Number(e.target.value); };
-  bar.querySelector('#pickReset').onclick = () => {
-    photoDataUrl = null;
-    workCanvas = null;
-    pickedLab = null;
-    document.getElementById('photoImage').setAttribute('href', kitchen.image);
-  };
-
-  // Capture phase so pipette clicks never reach the door handlers
-  if (pickClickHandler) svgCanvas.removeEventListener('click', pickClickHandler, true);
-  pickClickHandler = evt => {
-    if (!pickMode) return;
-    evt.stopPropagation();
-    pickPhotoColor(kitchen, evt);
-  };
-  svgCanvas.addEventListener('click', pickClickHandler, true);
-}
-*/
 
 // Debug editor (enable with ?edit): drag corner handles, copy resulting points
 
@@ -800,94 +693,111 @@ function updateEditToolbar() {
 // Multi-select: toggle button in the palette (works on touch) or Ctrl/Cmd/Shift + click on desktop
 let multiSelect = true; // on by default; the palette button turns it off
 const selectedIds = new Set();
+let selectionColor = null; // color just applied to the current selection; areas added next get it too
 
 function clearSelection() {
   selectedIds.clear();
+  selectionColor = null;
   selectedCabinetId = null;
   document.querySelectorAll('.cabinet-door').forEach(el => el.classList.remove('selected'));
-  updateMultiUI();
+  //updateMultiUI();
 }
 
-function updateMultiUI() {
-  const btn = document.getElementById('multiSelectBtn');
-  if (!btn) return;
-  btn.classList.toggle('active', multiSelect);
-  btn.setAttribute('aria-pressed', multiSelect);
-  btn.textContent = multiSelect ? `Multi-select on (${selectedIds.size})` : 'Select multiple areas';
-}
+// function updateMultiUI() {
+//   const btn = document.getElementById('multiSelectBtn');
+//   if (!btn) return;
+//   btn.classList.toggle('active', multiSelect);
+//   btn.setAttribute('aria-pressed', multiSelect);
+//   btn.textContent = multiSelect ? `Multi-select on (${selectedIds.size})` : 'Select multiple areas';
+// }
 
-function toggleMultiSelect() {
-  multiSelect = !multiSelect;
-  // Turning on keeps the current selection; turning off keeps just the last picked area
-  if (!multiSelect) {
-    const keep = selectedCabinetId && selectedIds.has(selectedCabinetId) ? selectedCabinetId : null;
-    selectedIds.clear();
-    if (keep) selectedIds.add(keep);
-    document.querySelectorAll('.cabinet-door').forEach(el => {
-      el.classList.toggle('selected', selectedIds.has(el.id.replace('door-', '')));
-    });
-    if (!keep) palettePopover.classList.remove('active');
-  } else {
-    palettePopover.classList.add('active');
-  }
-  updateMultiUI();
-}
+// function toggleMultiSelect() {
+//   multiSelect = !multiSelect;
+//   // Turning on keeps the current selection; turning off keeps just the last picked area
+//   if (!multiSelect) {
+//     selectionColor = null;
+//     const keep = selectedCabinetId && selectedIds.has(selectedCabinetId) ? selectedCabinetId : null;
+//     selectedIds.clear();
+//     if (keep) selectedIds.add(keep);
+//     document.querySelectorAll('.cabinet-door').forEach(el => {
+//       el.classList.toggle('selected', selectedIds.has(el.id.replace('door-', '')));
+//     });
+//     if (!keep) palettePopover.classList.remove('active');
+//   } else {
+//     palettePopover.classList.add('active');
+//   }
+//   updateMultiUI();
+// }
 
 function selectDoor(doorId, evt) {
   const additive = multiSelect || (evt && (evt.ctrlKey || evt.metaKey || evt.shiftKey));
   if (additive) {
-    if (selectedIds.has(doorId)) selectedIds.delete(doorId);
-    else selectedIds.add(doorId);
+    if (selectedIds.has(doorId)) {
+      selectedIds.delete(doorId);
+      // Leaving a painted group: the area goes back to its original look
+      if (selectionColor) resetDoor(doorId);
+      if (!selectedIds.size) selectionColor = null;
+    } else {
+      // Joining a selection that was just painted: paint the newcomer the same way
+      if (selectionColor && selectedIds.size) paintDoor(doorId, selectionColor);
+      selectedIds.add(doorId);
+    }
   } else {
     selectedIds.clear();
     selectedIds.add(doorId);
+    selectionColor = null;
   }
   selectedCabinetId = selectedIds.size ? doorId : null;
 
   document.querySelectorAll('.cabinet-door').forEach(el => {
     el.classList.toggle('selected', selectedIds.has(el.id.replace('door-', '')));
   });
-  updateMultiUI();
+  //updateMultiUI();
 
   // Show Floating Palette (stays open in multi-select so more areas can be added)
   if (selectedIds.size || multiSelect) palettePopover.classList.add('active');
   else palettePopover.classList.remove('active');
 }
 
+function paintDoor(id, hexColor) {
+  activeColorMap[colorKey(id)] = hexColor;
+  // Update element fill directly for smooth response
+  const el = document.getElementById(`door-${id}`);
+  if (el) {
+    el.setAttribute('fill', hexColor);
+    if (el.classList.contains('photo-door')) el.setAttribute('fill-opacity', 0.75);
+  }
+}
+
 // 5. Change Cabinet Color (applies to every selected area)
 function changeColor(hexColor) {
   if (!selectedIds.size) return;
 
-  selectedIds.forEach(id => {
-    activeColorMap[colorKey(id)] = hexColor;
-    // Update element fill directly for smooth response
-    const el = document.getElementById(`door-${id}`);
-    if (el) {
-      el.setAttribute('fill', hexColor);
-      if (el.classList.contains('photo-door')) el.setAttribute('fill-opacity', 0.75);
-    }
-  });
+  selectedIds.forEach(id => paintDoor(id, hexColor));
+  selectionColor = hexColor;
 
   // Update Swatch UI active ring
   renderPaletteSwatches(hexColor);
 }
 
+function resetDoor(id) {
+  const kitchen = kitchenData[activeKitchenIndex];
+  const el = document.getElementById(`door-${id}`);
+  if (kitchen.image) {
+    // Photo doors are transparent overlays: no color means the original photo shows
+    delete activeColorMap[colorKey(id)];
+    if (el) el.setAttribute('fill-opacity', 0);
+  } else {
+    activeColorMap[colorKey(id)] = kitchen.defaultCabinetColor;
+    if (el) el.setAttribute('fill', kitchen.defaultCabinetColor);
+  }
+}
+
 // 5b. Revert the selected areas to their original look
 function resetColor() {
   if (!selectedIds.size) return;
-  const kitchen = kitchenData[activeKitchenIndex];
-
-  selectedIds.forEach(id => {
-    const el = document.getElementById(`door-${id}`);
-    if (kitchen.image) {
-      // Photo doors are transparent overlays: no color means the original photo shows
-      delete activeColorMap[colorKey(id)];
-      if (el) el.setAttribute('fill-opacity', 0);
-    } else {
-      activeColorMap[colorKey(id)] = kitchen.defaultCabinetColor;
-      if (el) el.setAttribute('fill', kitchen.defaultCabinetColor);
-    }
-  });
+  selectionColor = null;
+  selectedIds.forEach(resetDoor);
   renderPaletteSwatches();
 }
 
