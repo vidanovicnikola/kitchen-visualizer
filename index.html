@@ -23,6 +23,7 @@
       <!-- Floating Color Palette -->
       <div id="palettePopover" class="palette-popover">
         <div class="palette-title">Select Cabinet Color</div>
+        <button id="multiSelectBtn" class="multi-select-btn" onclick="toggleMultiSelect()" aria-pressed="false">Select multiple areas</button>
         <div id="swatchContainer" class="swatch-grid"></div>
         <button id="resetColorBtn" class="reset-color-btn" onclick="resetColor()">Reset to original color</button>
       </div>
@@ -32,6 +33,7 @@
     <div id="thumbNav" class="thumbnails-nav"></div>
   </div>
 
+  <script src="kitchens-data.js"></script>
   <script src="script.js"></script>
 </body>
 </html>

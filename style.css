@@ -175,6 +175,47 @@ header p {
   margin-top: 16px;
 }
 
+.edit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.edit-toolbar input[type="text"] {
+  padding: 6px 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  min-width: 180px;
+}
+
+.edit-toolbar button {
+  padding: 6px 12px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.edit-toolbar button.primary {
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+.edit-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.edit-status {
+  flex-basis: 100%;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
 .edit-help {
   color: #94a3b8;
   font-size: 12px;
@@ -206,6 +247,24 @@ header p {
 }
 
 /* Floating Palette Popover */
+.multi-select-btn {
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: transparent;
+  color: #cbd5e1;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.multi-select-btn.active {
+  border-color: #38bdf8;
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+
 .reset-color-btn {
   width: 100%;
   margin-top: 12px;
@@ -304,6 +363,12 @@ header p {
 
   .reset-color-btn {
     margin-top: 6px;
+    padding: 4px;
+    font-size: 11px;
+  }
+
+  .multi-select-btn {
+    margin-bottom: 6px;
     padding: 4px;
     font-size: 11px;
   }

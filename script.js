@@ -1,31 +1,6 @@
 // 1. Data Definitions for Kitchen Layouts
-const kitchenData = [
-  {
-    id: 'photo',
-    title: 'Corner Kitchen (Photo)',
-    image: 'kitchen_1.jpeg',
-    width: 1205,
-    height: 1306,
-    defaultCabinetColor: null,
-    doors: [
-      { id: 'p1', points: '55,122 234,141 235,469 55,466' },
-      { id: 'p2', points: '234,141 396,160 395,472 235,469' },
-      { id: 'p3', points: '396,160 538,176 537,475 395,472' },
-      { id: 'p4', points: '538,176 664,190 664,478 537,475' },
-      { id: 'p5', points: '664,190 736,155 737,473 664,478' },
-      { id: 'p6', points: '736,155 845,98 846,338 736,362' },
-      { id: 'p7', points: '845,98 995,18 995,304 846,338' },
-      { id: 'p8', points: '55,833 231,817 232,1131 53,1164' },
-      { id: 'p9', points: '231,817 387,804 387,1102 232,1131' },
-      { id: 'p10', points: '387,804 521,792 521,1075 387,1102' },
-      { id: 'p11', points: '521,792 623,783 623,1056 521,1075' },
-      { id: 'p12', points: '661,798 914,921 914,1032 660,876' },
-      { id: 'p13', points: '661,876 914,1032 914,1163 660,962' },
-      { id: 'p14', points: '660,962 914,1163 915,1318 661,1075' },
-      { id: 'p15', points: '915,911 944,922 1191,879 1191,1245 914,1346' },
-      { id: 'p16', points: '623,783 634,786 661,798 661,1075 638,1053 623,1056' },
-    ]
-  },
+// Built-in illustrated kitchens (photo kitchens live in kitchens-data.js)
+const builtinKitchens = [
   {
     id: 'modern',
     title: 'Modern Minimalist',
@@ -97,9 +72,32 @@ const colorSwatches = [
 ];
 
 // State Variables
+const EDIT_MODE = new URLSearchParams(location.search).has('edit');
+const DRAFT_KEY = 'kitchenVisualizerDraft';
+
+// Photo kitchens come from kitchens-data.js; in edit mode a browser-saved draft takes precedence
+function loadPhotoKitchens() {
+  const fromFile = typeof savedPhotoKitchens === 'undefined' ? [] : savedPhotoKitchens;
+  if (EDIT_MODE) {
+    try {
+      const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+      if (Array.isArray(draft)) return draft;
+    } catch (err) { /* no usable draft */ }
+  }
+  return JSON.parse(JSON.stringify(fromFile));
+}
+
+let photoKitchens = loadPhotoKitchens();
+let kitchenData = [];
+function syncKitchenData() {
+  kitchenData = [...photoKitchens, ...builtinKitchens];
+}
+syncKitchenData();
+
 let activeKitchenIndex = 0;
 let selectedCabinetId = null;
-let activeColorMap = {}; // Stores color per door
+let activeColorMap = {}; // Stores color per door, keyed by "kitchenId:doorId"
+const colorKey = doorId => `${kitchenData[activeKitchenIndex].id}:${doorId}`;
 
 // DOM Elements
 const svgCanvas = document.getElementById('kitchenCanvas');
@@ -113,6 +111,7 @@ function init() {
   renderPaletteSwatches();
   setupViewControls();
   setupPaletteDismiss();
+  if (EDIT_MODE) setupEditToolbar();
   loadKitchen(0);
 }
 
@@ -123,8 +122,7 @@ function setupPaletteDismiss() {
     const selector = '.cabinet-group, .palette-popover, .view-controls, .edit-handle, .edit-panel, .thumbnails-nav';
     if (e.composedPath().some(el => el.matches && el.matches(selector))) return;
     palettePopover.classList.remove('active');
-    selectedCabinetId = null;
-    document.querySelectorAll('.cabinet-door').forEach(el => el.classList.remove('selected'));
+    clearSelection();
   });
 }
 
@@ -225,12 +223,14 @@ function setupViewControls() {
 function loadKitchen(index) {
   activeKitchenIndex = index;
   selectedCabinetId = null;
+  selectedIds.clear();
+  updateMultiUI();
   palettePopover.classList.remove('active');
   Object.assign(view, { x: 0, y: 0 });
   viewBase.w = 0;
 
   const kitchen = kitchenData[index];
-  
+  updateEditToolbar();
   // Initialize cabinet colors to kitchen default
   if (kitchen.image) {
     renderPhotoKitchen(kitchen);
@@ -249,8 +249,8 @@ function loadKitchen(index) {
   setViewBase(800, 500);
 
   kitchen.doors.forEach(door => {
-    if (!activeColorMap[door.id]) {
-      activeColorMap[door.id] = kitchen.defaultCabinetColor;
+    if (!activeColorMap[colorKey(door.id)]) {
+      activeColorMap[colorKey(door.id)] = kitchen.defaultCabinetColor;
     }
   });
 
@@ -266,9 +266,9 @@ function loadKitchen(index) {
 
   // Render Upper and Lower Cabinet Doors
   kitchen.doors.forEach(door => {
-    const currentColor = activeColorMap[door.id] || kitchen.defaultCabinetColor;
+    const currentColor = activeColorMap[colorKey(door.id)] || kitchen.defaultCabinetColor;
     svgContent += `
-      <g class="cabinet-group" onclick="selectDoor('${door.id}')">
+      <g class="cabinet-group" onclick="selectDoor('${door.id}', event)">
         <!-- Main Door Frame -->
         <rect 
           id="door-${door.id}" 
@@ -302,11 +302,11 @@ function loadKitchen(index) {
 // Photo kitchen: transparent polygons over the image; tinted only once a color is picked
 function renderPhotoKitchen(kitchen) {
   setViewBase(kitchen.width, kitchen.height);
-  let svgContent = `<image id="photoImage" href="${kitchen.image}" width="${kitchen.width}" height="${kitchen.height}" />`;
+  let svgContent = `<image id="photoImage" href="${kitchen._src || kitchen.image}" width="${kitchen.width}" height="${kitchen.height}" />`;
   kitchen.doors.forEach(door => {
-    const color = activeColorMap[door.id];
+    const color = activeColorMap[colorKey(door.id)];
     svgContent += `
-      <g class="cabinet-group" onclick="selectDoor('${door.id}')">
+      <g class="cabinet-group" onclick="selectDoor('${door.id}', event)">
         <polygon id="door-${door.id}" class="cabinet-door photo-door"
           points="${door.points}"
           fill="${color || '#ffffff'}"
@@ -472,7 +472,6 @@ function setupColorPicker(kitchen) {
 */
 
 // Debug editor (enable with ?edit): drag corner handles, copy resulting points
-const EDIT_MODE = new URLSearchParams(location.search).has('edit');
 
 function setupPointEditor(kitchen) {
   const NS = 'http://www.w3.org/2000/svg';
@@ -489,7 +488,7 @@ function setupPointEditor(kitchen) {
   const coordLabel = document.createElement('div');
   coordLabel.className = 'edit-coords';
 
-  const refreshPanel = () => {
+  const refreshPanel = (changed = false) => {
     const text = kitchen.doors.map(d => `{ id: '${d.id}', points: '${d.points}' },`).join('\n');
     panel.innerHTML = `<button id="editCopy">Copy points</button>
       <p class="edit-help">Drag corner = move &middot; Right-click empty area = new door &middot;
@@ -497,6 +496,7 @@ function setupPointEditor(kitchen) {
       Shift + right-click door = delete door</p><pre></pre>`;
     panel.querySelector('pre').textContent = text;
     panel.querySelector('#editCopy').onclick = () => navigator.clipboard.writeText(text);
+    if (changed) saveDraft();
   };
 
   const toImageCoords = evt => {
@@ -515,7 +515,7 @@ function setupPointEditor(kitchen) {
   svgCanvas.parentElement.appendChild(coordLabel);
 
   // Structural edits change the data, then re-render the scene (which rebuilds the handles)
-  const rebuild = () => renderPhotoKitchen(kitchen);
+  const rebuild = () => { saveDraft(); renderPhotoKitchen(kitchen); };
   const serialize = pts => pts.map(p => p.join(',')).join(' ');
 
   kitchen.doors.forEach(door => {
@@ -545,7 +545,7 @@ function setupPointEditor(kitchen) {
         handle.setAttribute('cx', px);
         handle.setAttribute('cy', py);
         poly.setAttribute('points', door.points);
-        refreshPanel();
+        refreshPanel(true);
       });
       svgCanvas.appendChild(handle);
     });
@@ -565,7 +565,7 @@ function setupPointEditor(kitchen) {
       if (!evt.shiftKey) return;
       const id = target.id.replace('door-', '');
       kitchen.doors = kitchen.doors.filter(d => d.id !== id);
-      delete activeColorMap[id];
+      delete activeColorMap[colorKey(id)];
     } else {
       const [x, y] = toImageCoords(evt);
       const size = 40;
@@ -600,54 +600,294 @@ function setupPointEditor(kitchen) {
   refreshPanel();
 }
 
-// 4. Handle Door Selection
-function selectDoor(doorId) {
-  selectedCabinetId = doorId;
+// Edit-mode persistence: plain data only (no session-only fields such as _src)
+const plainKitchen = k => ({
+  id: k.id, title: k.title, image: k.image, width: k.width, height: k.height,
+  doors: k.doors.map(d => ({ id: d.id, points: d.points }))
+});
 
-  // Highlight selected door element
-  document.querySelectorAll('.cabinet-door').forEach(el => el.classList.remove('selected'));
-  const activeElement = document.getElementById(`door-${doorId}`);
-  if (activeElement) {
-    activeElement.classList.add('selected');
-  }
-
-  // Show Floating Palette
-  palettePopover.classList.add('active');
+function setEditStatus(text) {
+  const el = document.getElementById('editStatus');
+  if (el) el.textContent = text;
 }
 
-// 5. Change Cabinet Color
-function changeColor(hexColor) {
-  if (!selectedCabinetId) return;
+function saveDraft() {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(photoKitchens.map(plainKitchen)));
+    setEditStatus('Changes autosaved in this browser. Click "Save to file" to keep them permanently.');
+  } catch (err) {
+    setEditStatus('Could not autosave in this browser. Use "Save to file" before leaving.');
+  }
+}
 
-  activeColorMap[selectedCabinetId] = hexColor;
-  
-  // Update element fill directly for smooth response
-  const activeElement = document.getElementById(`door-${selectedCabinetId}`);
-  if (activeElement) {
-    activeElement.setAttribute('fill', hexColor);
-    if (activeElement.classList.contains('photo-door')) {
-      activeElement.setAttribute('fill-opacity', 0.75);
+function buildDataFile() {
+  const kitchens = photoKitchens.map(plainKitchen).map(k => [
+    '  {',
+    `    id: ${JSON.stringify(k.id)},`,
+    `    title: ${JSON.stringify(k.title)},`,
+    `    image: ${JSON.stringify(k.image)},`,
+    `    width: ${k.width},`,
+    `    height: ${k.height},`,
+    '    doors: [',
+    k.doors.map(d => `      { id: ${JSON.stringify(d.id)}, points: ${JSON.stringify(d.points)} }`).join(',\n'),
+    '    ]',
+    '  }'
+  ].join('\n'));
+  return '// Photo kitchens. Generated by the editor (index.html?edit -> "Save to file"); replace this file with the downloaded one.\n' +
+    `const savedPhotoKitchens = [\n${kitchens.join(',\n')}\n];\n`;
+}
+
+// Set when server.py answers; edit mode then writes straight into the project folder
+let editServer = false;
+
+async function postToServer(url, body) {
+  const res = await fetch(url, { method: 'POST', body });
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+  return res.json();
+}
+
+async function saveDataFile() {
+  if (editServer) {
+    try {
+      await postToServer('api/save-data', buildDataFile());
+      setEditStatus('Saved to kitchens-data.js in the project folder.');
+      return;
+    } catch (err) {
+      setEditStatus(`Could not save to the folder (${err.message}); downloading the file instead.`);
     }
   }
+  downloadDataFile();
+}
+
+function downloadDataFile() {
+  const blob = new Blob([buildDataFile()], { type: 'text/javascript' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'kitchens-data.js';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  const newImages = photoKitchens.filter(k => k._src).map(k => k.image);
+  setEditStatus('Downloaded kitchens-data.js: replace the file in the project folder.' +
+    (newImages.length ? ` Also make sure these images are in that folder: ${newImages.join(', ')}.` : ''));
+}
+
+function addKitchenFromFile(file) {
+  const src = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = async () => {
+    const title = document.getElementById('editTitle').value.trim();
+    const kitchen = {
+      id: `photo-${Date.now().toString(36)}`,
+      title: title || file.name.replace(/\.[^.]+$/, ''),
+      image: file.name,
+      _src: src,
+      width: img.naturalWidth,
+      height: img.naturalHeight,
+      doors: []
+    };
+    let note = `Copy "${file.name}" into the project folder (next to index.html) so it loads after saving.`;
+    if (editServer) {
+      try {
+        const saved = await postToServer(`api/upload-image?name=${encodeURIComponent(file.name)}`, file);
+        kitchen.image = saved.name;
+        delete kitchen._src;
+        note = `Image saved in the project folder as "${saved.name}".`;
+      } catch (err) {
+        note = `Could not copy the image to the folder (${err.message}). ${note}`;
+      }
+    }
+    photoKitchens.push(kitchen);
+    syncKitchenData();
+    renderThumbnails();
+    loadKitchen(photoKitchens.length - 1);
+    saveDraft();
+    setEditStatus(`Added a new kitchen. ${note} Right-click the picture to add doors.`);
+  };
+  img.src = src;
+}
+
+// Destructive buttons ask for a second click (prompt/confirm are unavailable in some embedded browsers)
+function confirmClick(btn, action) {
+  if (btn.dataset.armed) {
+    clearTimeout(Number(btn.dataset.armed));
+    delete btn.dataset.armed;
+    btn.textContent = btn.dataset.label;
+    action();
+    return;
+  }
+  btn.dataset.label = btn.textContent;
+  btn.textContent = 'Click again to confirm';
+  btn.dataset.armed = setTimeout(() => {
+    delete btn.dataset.armed;
+    btn.textContent = btn.dataset.label;
+  }, 3000);
+}
+
+function setupEditToolbar() {
+  const bar = document.createElement('div');
+  bar.id = 'editToolbar';
+  bar.className = 'edit-toolbar';
+  bar.innerHTML = `
+    <input id="editTitle" type="text" placeholder="Kitchen name" maxlength="60">
+    <button id="editRename">Rename</button>
+    <button id="editAddKitchen">+ New kitchen from image</button>
+    <button id="editDelete">Delete kitchen</button>
+    <button id="editSave" class="primary">Save to file</button>
+    <button id="editDiscard">Discard draft</button>
+    <input id="editFile" type="file" accept="image/*" hidden>
+    <span id="editStatus" class="edit-status"></span>`;
+  thumbNav.after(bar);
+
+  const fileInput = bar.querySelector('#editFile');
+  bar.querySelector('#editAddKitchen').onclick = () => fileInput.click();
+  fileInput.onchange = () => {
+    if (fileInput.files[0]) addKitchenFromFile(fileInput.files[0]);
+    fileInput.value = '';
+  };
+
+  bar.querySelector('#editRename').onclick = () => {
+    const kitchen = kitchenData[activeKitchenIndex];
+    const title = bar.querySelector('#editTitle').value.trim();
+    if (!kitchen.image || !title) return;
+    kitchen.title = title;
+    renderThumbnails();
+    saveDraft();
+  };
+
+  bar.querySelector('#editDelete').onclick = e => confirmClick(e.currentTarget, () => {
+    const kitchen = kitchenData[activeKitchenIndex];
+    photoKitchens = photoKitchens.filter(k => k !== kitchen);
+    Object.keys(activeColorMap).filter(k => k.startsWith(`${kitchen.id}:`)).forEach(k => delete activeColorMap[k]);
+    syncKitchenData();
+    renderThumbnails();
+    loadKitchen(0);
+    saveDraft();
+  });
+
+  bar.querySelector('#editSave').onclick = saveDataFile;
+
+  // Detect the local save server (absent on GitHub Pages or file://)
+  fetch('api/ping').then(r => r.ok ? r.json() : null).then(j => {
+    editServer = !!(j && j.ok);
+    setEditStatus(editServer
+      ? 'Connected to the local save server: images and "Save to file" write directly into the project folder.'
+      : 'No local save server found: "Save to file" will download kitchens-data.js (run "python server.py" for direct saving).');
+  }).catch(() => {});
+
+  bar.querySelector('#editDiscard').onclick = e => confirmClick(e.currentTarget, () => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch (err) { /* ignore */ }
+    photoKitchens = loadPhotoKitchens();
+    syncKitchenData();
+    renderThumbnails();
+    loadKitchen(0);
+    setEditStatus('Draft discarded; kitchens reloaded from kitchens-data.js.');
+  });
+}
+
+// Rename/Delete only apply to photo kitchens
+function updateEditToolbar() {
+  const kitchen = kitchenData[activeKitchenIndex];
+  const isPhoto = !!(kitchen && kitchen.image);
+  ['editRename', 'editDelete'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.disabled = !isPhoto;
+  });
+  const title = document.getElementById('editTitle');
+  if (title) title.value = isPhoto ? kitchen.title : '';
+}
+
+// 4. Handle Door Selection
+// Multi-select: toggle button in the palette (works on touch) or Ctrl/Cmd/Shift + click on desktop
+let multiSelect = true; // on by default; the palette button turns it off
+const selectedIds = new Set();
+
+function clearSelection() {
+  selectedIds.clear();
+  selectedCabinetId = null;
+  document.querySelectorAll('.cabinet-door').forEach(el => el.classList.remove('selected'));
+  updateMultiUI();
+}
+
+function updateMultiUI() {
+  const btn = document.getElementById('multiSelectBtn');
+  if (!btn) return;
+  btn.classList.toggle('active', multiSelect);
+  btn.setAttribute('aria-pressed', multiSelect);
+  btn.textContent = multiSelect ? `Multi-select on (${selectedIds.size})` : 'Select multiple areas';
+}
+
+function toggleMultiSelect() {
+  multiSelect = !multiSelect;
+  // Turning on keeps the current selection; turning off keeps just the last picked area
+  if (!multiSelect) {
+    const keep = selectedCabinetId && selectedIds.has(selectedCabinetId) ? selectedCabinetId : null;
+    selectedIds.clear();
+    if (keep) selectedIds.add(keep);
+    document.querySelectorAll('.cabinet-door').forEach(el => {
+      el.classList.toggle('selected', selectedIds.has(el.id.replace('door-', '')));
+    });
+    if (!keep) palettePopover.classList.remove('active');
+  } else {
+    palettePopover.classList.add('active');
+  }
+  updateMultiUI();
+}
+
+function selectDoor(doorId, evt) {
+  const additive = multiSelect || (evt && (evt.ctrlKey || evt.metaKey || evt.shiftKey));
+  if (additive) {
+    if (selectedIds.has(doorId)) selectedIds.delete(doorId);
+    else selectedIds.add(doorId);
+  } else {
+    selectedIds.clear();
+    selectedIds.add(doorId);
+  }
+  selectedCabinetId = selectedIds.size ? doorId : null;
+
+  document.querySelectorAll('.cabinet-door').forEach(el => {
+    el.classList.toggle('selected', selectedIds.has(el.id.replace('door-', '')));
+  });
+  updateMultiUI();
+
+  // Show Floating Palette (stays open in multi-select so more areas can be added)
+  if (selectedIds.size || multiSelect) palettePopover.classList.add('active');
+  else palettePopover.classList.remove('active');
+}
+
+// 5. Change Cabinet Color (applies to every selected area)
+function changeColor(hexColor) {
+  if (!selectedIds.size) return;
+
+  selectedIds.forEach(id => {
+    activeColorMap[colorKey(id)] = hexColor;
+    // Update element fill directly for smooth response
+    const el = document.getElementById(`door-${id}`);
+    if (el) {
+      el.setAttribute('fill', hexColor);
+      if (el.classList.contains('photo-door')) el.setAttribute('fill-opacity', 0.75);
+    }
+  });
 
   // Update Swatch UI active ring
   renderPaletteSwatches(hexColor);
 }
 
-// 5b. Revert the selected door to its original look
+// 5b. Revert the selected areas to their original look
 function resetColor() {
-  if (!selectedCabinetId) return;
+  if (!selectedIds.size) return;
   const kitchen = kitchenData[activeKitchenIndex];
-  const activeElement = document.getElementById(`door-${selectedCabinetId}`);
 
-  if (kitchen.image) {
-    // Photo doors are transparent overlays: no color means the original photo shows
-    delete activeColorMap[selectedCabinetId];
-    if (activeElement) activeElement.setAttribute('fill-opacity', 0);
-  } else {
-    activeColorMap[selectedCabinetId] = kitchen.defaultCabinetColor;
-    if (activeElement) activeElement.setAttribute('fill', kitchen.defaultCabinetColor);
-  }
+  selectedIds.forEach(id => {
+    const el = document.getElementById(`door-${id}`);
+    if (kitchen.image) {
+      // Photo doors are transparent overlays: no color means the original photo shows
+      delete activeColorMap[colorKey(id)];
+      if (el) el.setAttribute('fill-opacity', 0);
+    } else {
+      activeColorMap[colorKey(id)] = kitchen.defaultCabinetColor;
+      if (el) el.setAttribute('fill', kitchen.defaultCabinetColor);
+    }
+  });
   renderPaletteSwatches();
 }
 
@@ -670,7 +910,8 @@ function renderThumbnails() {
   kitchenData.forEach((kitchen, idx) => {
     const card = document.createElement('div');
     card.className = `thumb-card ${idx === activeKitchenIndex ? 'active' : ''}`;
-    card.innerHTML = `<div class="thumb-title">${kitchen.title}</div>`;
+    card.innerHTML = '<div class="thumb-title"></div>';
+    card.firstChild.textContent = kitchen.title;
     card.onclick = () => loadKitchen(idx);
     thumbNav.appendChild(card);
   });
