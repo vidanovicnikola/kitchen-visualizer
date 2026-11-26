@@ -428,7 +428,10 @@ header p {
   flex-basis: 100%;
   color: #94a3b8;
   font-size: 12px;
-  min-height: 1em;
+}
+
+.color-config-status:empty {
+  display: none;
 }
 
 .color-config-btn {
@@ -459,4 +462,47 @@ header p {
 
 .color-config-btn:active {
   transform: translateY(0);
+}
+
+/* Phones: one even row of three buttons, icon above a short wrapped label */
+@media (max-width: 600px) {
+  header {
+    margin-bottom: 14px;
+  }
+
+  header h1 {
+    font-size: 1.4rem;
+  }
+
+  header p {
+    font-size: 0.85rem;
+  }
+
+  .color-config-controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    align-items: stretch;
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  .color-config-btn {
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 8px 4px;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+  }
+
+  .color-config-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .color-config-status {
+    grid-column: 1 / -1;
+    text-align: center;
+  }
 }
