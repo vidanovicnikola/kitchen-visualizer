@@ -413,3 +413,41 @@ header p {
   color: #e2e8f0;
   font-weight: 500;
 }
+
+/* Color Configuration Controls */
+.color-config-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  justify-content: center;
+}
+
+.color-config-status {
+  flex-basis: 100%;
+  color: #94a3b8;
+  font-size: 12px;
+  min-height: 1em;
+}
+
+.color-config-btn {
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
+  color: #0f172a;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.color-config-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(56, 189, 248, 0.3);
+}
+
+.color-config-btn:active {
+  transform: translateY(0);
+}

@@ -135,6 +135,7 @@ function init() {
   renderPaletteSwatches();
   setupViewControls();
   setupPaletteDismiss();
+  initColorConfigUI();
   if (EDIT_MODE) setupEditToolbar();
   loadKitchen(0);
 }
