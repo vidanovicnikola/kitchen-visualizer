@@ -432,6 +432,9 @@ header p {
 }
 
 .color-config-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 16px;
   background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
   color: #0f172a;
@@ -441,6 +444,12 @@ header p {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.color-config-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .color-config-btn:hover {
