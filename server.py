@@ -93,5 +93,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    from update_colors import update_colors
+    print(f'Texture swatches: {len(update_colors())} picture(s) found in colors/')
     print(f'Kitchen editor server: http://localhost:{PORT}/index.html?edit  (Ctrl+C to stop)')
     ThreadingHTTPServer(('127.0.0.1', PORT), Handler).serve_forever()

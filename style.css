@@ -103,7 +103,6 @@ header p {
 }
 
 .photo-door {
-  mix-blend-mode: multiply;
   stroke: transparent;
   stroke-width: 3px;
 }

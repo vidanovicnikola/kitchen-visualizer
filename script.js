@@ -71,6 +71,30 @@ const colorSwatches = [
   { name: 'Slate Gray', hex: '#475569' }
 ];
 
+// Chipboard textures: every picture in colors/ (listed in colors/colors.js by update_colors.py)
+if (typeof colorTextures !== 'undefined') {
+  colorTextures.forEach(file => {
+    const stem = file.replace(/\.[^.]+$/, '');
+    colorSwatches.push({ name: `Chipboard ${stem.toUpperCase()}`, id: stem.replace(/[^A-Za-z0-9_-]/g, '_'), image: `colors/${file}` });
+  });
+}
+
+// A swatch paints either a flat color or a repeating texture (SVG pattern, see textureDefs)
+const swatchFill = swatch => (swatch.image ? `url(#tex-${swatch.id})` : swatch.hex);
+
+// Pattern definitions for the texture swatches; must be part of every rendered SVG
+function textureDefs(baseWidth) {
+  const tile = baseWidth / 5; // square tile; non-square pictures are cropped to fit
+  const patterns = colorSwatches.filter(s => s.image).map(s => `
+    <pattern id="tex-${s.id}" patternUnits="userSpaceOnUse" width="${tile}" height="${tile}">
+      <image href="${encodeURI(s.image)}" width="${tile}" height="${tile}" preserveAspectRatio="xMidYMid slice" />
+    </pattern>`).join('');
+  return `<defs>${patterns}</defs>`;
+}
+
+// Fully opaque so the original door in the photo doesn't show through the applied color
+const PAINT_OPACITY = 1;
+
 // State Variables
 const EDIT_MODE = new URLSearchParams(location.search).has('edit');
 const DRAFT_KEY = 'kitchenVisualizerDraft';
@@ -302,6 +326,7 @@ function loadKitchen(index) {
 
   // Build SVG Markup
   let svgContent = `
+    ${textureDefs(800)}
     <!-- Background Wall -->
     <rect width="800" height="500" fill="${kitchen.wallColor}" />
 
@@ -348,7 +373,8 @@ function loadKitchen(index) {
 // Photo kitchen: transparent polygons over the image; tinted only once a color is picked
 function renderPhotoKitchen(kitchen) {
   setViewBase(kitchen.width, kitchen.height);
-  let svgContent = `<image id="photoImage" href="${kitchen._src || kitchen.image}" width="${kitchen.width}" height="${kitchen.height}" />`;
+  let svgContent = textureDefs(kitchen.width) +
+    `<image id="photoImage" href="${kitchen._src || kitchen.image}" width="${kitchen.width}" height="${kitchen.height}" />`;
   kitchen.doors.forEach(door => {
     const color = activeColorMap[colorKey(door.id)];
     svgContent += `
@@ -356,7 +382,7 @@ function renderPhotoKitchen(kitchen) {
         <polygon id="door-${door.id}" class="cabinet-door photo-door"
           points="${door.points}"
           fill="${color || '#ffffff'}"
-          fill-opacity="${color ? 0.75 : 0}" />
+          fill-opacity="${color ? PAINT_OPACITY : 0}" />
       </g>`;
   });
   svgCanvas.innerHTML = svgContent;
@@ -759,25 +785,25 @@ function selectDoor(doorId, evt) {
   else palettePopover.classList.remove('active');
 }
 
-function paintDoor(id, hexColor) {
-  activeColorMap[colorKey(id)] = hexColor;
+function paintDoor(id, fill) {
+  activeColorMap[colorKey(id)] = fill;
   // Update element fill directly for smooth response
   const el = document.getElementById(`door-${id}`);
   if (el) {
-    el.setAttribute('fill', hexColor);
-    if (el.classList.contains('photo-door')) el.setAttribute('fill-opacity', 0.75);
+    el.setAttribute('fill', fill);
+    if (el.classList.contains('photo-door')) el.setAttribute('fill-opacity', PAINT_OPACITY);
   }
 }
 
-// 5. Change Cabinet Color (applies to every selected area)
-function changeColor(hexColor) {
+// 5. Change Cabinet Color or texture (applies to every selected area)
+function changeColor(fill) {
   if (!selectedIds.size) return;
 
-  selectedIds.forEach(id => paintDoor(id, hexColor));
-  selectionColor = hexColor;
+  selectedIds.forEach(id => paintDoor(id, fill));
+  selectionColor = fill;
 
   // Update Swatch UI active ring
-  renderPaletteSwatches(hexColor);
+  renderPaletteSwatches(fill);
 }
 
 function resetDoor(id) {
@@ -802,14 +828,21 @@ function resetColor() {
 }
 
 // 6. Build Swatch Palette UI
-function renderPaletteSwatches(activeHex = null) {
+function renderPaletteSwatches(activeFill = null) {
   swatchContainer.innerHTML = '';
   colorSwatches.forEach(swatch => {
+    const fill = swatchFill(swatch);
     const btn = document.createElement('button');
-    btn.className = `swatch-btn ${swatch.hex === activeHex ? 'active' : ''}`;
-    btn.style.backgroundColor = swatch.hex;
+    btn.className = `swatch-btn ${fill === activeFill ? 'active' : ''}`;
+    if (swatch.image) {
+      btn.style.backgroundImage = `url("${encodeURI(swatch.image)}")`;
+      btn.style.backgroundSize = 'cover';
+      btn.style.backgroundPosition = 'center';
+    } else {
+      btn.style.backgroundColor = swatch.hex;
+    }
     btn.title = swatch.name;
-    btn.onclick = () => changeColor(swatch.hex);
+    btn.onclick = () => changeColor(fill);
     swatchContainer.appendChild(btn);
   });
 }
